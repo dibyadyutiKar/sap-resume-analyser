@@ -1,4 +1,3 @@
-// Updated App.jsx to pass uploadedFileName to PhaseCards
 import React, { useState, useCallback, useRef } from "react";
 import { CheckCircle } from "lucide-react";
 import FileUpload from "./components/FileUpload";
@@ -6,8 +5,11 @@ import PhaseCards from "./components/PhaseCards";
 import PhaseDetails from "./components/PhaseDetails";
 import TagModal from "./components/TagModal";
 import LoadingSpinner from "./components/LoadingSpinner";
-import { analyzeAllPhases } from "./services/apiService";
-import { PHASE_NAMES } from "./utils/constants";
+import ExperienceSection from "./components/ExperienceSection";
+import { analyzeAllPhasesAndExperiences } from "./services/apiService";
+import { PHASE_NAMES, EXPERIENCE_NAMES } from "./utils/constants";
+
+const ALL_STEPS = [...PHASE_NAMES, ...EXPERIENCE_NAMES];
 
 function App() {
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -20,142 +22,104 @@ function App() {
   const [analysisProgress, setAnalysisProgress] = useState({});
   const [analysisErrors, setAnalysisErrors] = useState({});
 
-  // Track the current analysis to prevent multiple concurrent analyses
   const currentAnalysisRef = useRef(null);
 
-  const handleFileUpload = useCallback((event) => {
-    const file = event.target.files[0];
+  const handleFileUpload = useCallback((e) => {
+    const file = e.target.files[0];
+    console.log("📂 handleFileUpload:", file);
     if (file) {
       setUploadedFile(file);
       setAnalysisComplete(false);
       setExtractedData({});
       setAnalysisProgress({});
       setAnalysisErrors({});
-      // Clear any previous analysis reference
       currentAnalysisRef.current = null;
     }
   }, []);
 
   const analyzeResume = useCallback(async () => {
+    console.log(
+      "▶️ analyzeResume called. uploadedFile:",
+      uploadedFile,
+      "isAnalyzing:",
+      isAnalyzing
+    );
     if (!uploadedFile) {
-      console.warn("No file uploaded");
+      console.warn("❌ No file uploaded, aborting analysis");
       return;
     }
-
-    // Prevent multiple concurrent analyses
     if (isAnalyzing) {
-      console.warn("Analysis already in progress, ignoring duplicate request");
+      console.warn("⏹️ Already analyzing, aborting duplicate");
       return;
     }
 
-    // Create unique analysis ID
     const analysisId = `${uploadedFile.name}-${
       uploadedFile.size
     }-${Date.now()}`;
     currentAnalysisRef.current = analysisId;
 
-    console.log(`🎯 Starting new analysis: ${analysisId}`);
-
+    console.log("🔍 Starting analysis flow, analysisId=", analysisId);
     setIsAnalyzing(true);
     setAnalysisComplete(false);
     setSelectedPhase(null);
-
-    // Initialize progress tracking for sequential processing
-    const initialProgress = {};
-    PHASE_NAMES.forEach((phase) => {
-      initialProgress[phase] = { status: "pending", error: null };
-    });
-    setAnalysisProgress(initialProgress);
+    setAnalysisProgress(
+      ALL_STEPS.reduce(
+        (acc, key) => ({ ...acc, [key]: { status: "pending", error: null } }),
+        {}
+      )
+    );
 
     try {
-      // Track API calls for this analysis
-      let apiCallCount = 0;
-
-      const { results, errors } = await analyzeAllPhases(
+      const { results, errors } = await analyzeAllPhasesAndExperiences(
         uploadedFile,
-        (phaseName, result, error, status) => {
-          // Verify this callback belongs to the current analysis
-          if (currentAnalysisRef.current !== analysisId) {
-            console.warn(
-              `Ignoring callback for outdated analysis: ${phaseName}`
-            );
-            return;
-          }
-
-          console.log(
-            `Phase update for ${analysisId}: ${phaseName} - ${status}`,
-            { result, error }
-          );
-
-          // Count API calls
-          if (status === "started") {
-            apiCallCount++;
-            console.log(`📊 API Call #${apiCallCount} started: ${phaseName}`);
-          }
-
-          // Update progress for each phase change
+        (key, result, error, status) => {
+          console.log(`↪️ onProgress: ${key} → ${status}`, { error, result });
+          if (currentAnalysisRef.current !== analysisId) return;
           setAnalysisProgress((prev) => ({
             ...prev,
-            [phaseName]: {
-              status: status || (error ? "error" : "completed"),
-              error: error?.message || null,
-            },
+            [key]: { status, error: error?.message || null },
           }));
-
-          // Update extracted data when phase completes successfully
-          if (status === "completed" && result) {
-            setExtractedData((prev) => {
-              const updated = { ...prev, [phaseName]: result };
-              console.log(`Updated extracted data for ${phaseName}:`, updated);
-              return updated;
-            });
+          if (status === "completed") {
+            setExtractedData((prev) => ({ ...prev, [key]: result }));
           }
         }
       );
 
-      // Verify this is still the current analysis before updating state
-      if (currentAnalysisRef.current !== analysisId) {
-        console.warn(`Analysis ${analysisId} was superseded, ignoring results`);
-        return;
+      console.log("✅ analyzeAllPhasesAndExperiences resolved", {
+        results,
+        errors,
+      });
+      if (currentAnalysisRef.current === analysisId) {
+        setExtractedData(results);
+        setAnalysisErrors(errors);
+        setAnalysisComplete(true);
       }
-
-      console.log(`✅ Analysis ${analysisId} completed:`, { results, errors });
-      console.log(
-        `📊 Total API calls made: ${apiCallCount} (should equal ${PHASE_NAMES.length})`
-      );
-
-      setExtractedData(results);
-      setAnalysisErrors(errors);
-      setAnalysisComplete(true);
-
-      // Show completion message
-      const successCount = Object.keys(results).filter(
-        (phase) => results[phase] && Object.keys(results[phase]).length > 0
-      ).length;
-
-      console.log(
-        `🎉 Analysis ${analysisId} completed: ${successCount}/${PHASE_NAMES.length} phases successful`
-      );
-    } catch (error) {
-      // Verify this is still the current analysis
-      if (currentAnalysisRef.current !== analysisId) {
-        console.warn(`Analysis ${analysisId} was superseded, ignoring error`);
-        return;
+    } catch (err) {
+      console.error("❌ analyzeAllPhasesAndExperiences threw", err);
+      if (currentAnalysisRef.current === analysisId) {
+        setAnalysisErrors({ general: err.message });
       }
-
-      console.error(`❌ Analysis ${analysisId} failed:`, error);
-      setAnalysisErrors({ general: error.message });
     } finally {
-      // Only update loading state if this is still the current analysis
+      console.log("🏁 analysis flow complete, cleaning up loading state");
       if (currentAnalysisRef.current === analysisId) {
         setIsAnalyzing(false);
-        console.log(`🏁 Analysis ${analysisId} finalized`);
       }
     }
   }, [uploadedFile, isAnalyzing]);
 
-  // Additional safeguard: Disable analyze button during analysis
-  const canAnalyze = uploadedFile && !isAnalyzing;
+  const canAnalyze = Boolean(uploadedFile) && !isAnalyzing;
+
+  // Filter out experience data for PhaseCards - only show phase data
+  const phaseOnlyData = Object.fromEntries(
+    Object.entries(extractedData).filter(
+      ([key]) =>
+        ![
+          "business_process_experience",
+          "wricef_development_experience",
+          "integration_experience",
+        ].includes(key)
+    )
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -166,19 +130,9 @@ function App() {
             SAP Resume Project Analyzer
           </h1>
           <p className="text-gray-600">
-            Upload your SAP resume to extract across 6 project phases
+            Upload your SAP resume to extract across project phases and
+            experiences
           </p>
-          {/* {isAnalyzing && (
-            <div className="mt-4 bg-blue-100 border border-blue-300 rounded-lg p-3">
-              <p className="text-blue-700 text-sm font-medium">
-                ⚡ Analysis in progress - Each phase will be called exactly once
-              </p>
-              <p className="text-blue-600 text-xs mt-1">
-                File: {uploadedFile?.name} | Analysis ID:{" "}
-                {currentAnalysisRef.current?.split("-").pop()}
-              </p>
-            </div>
-          )} */}
         </div>
 
         {/* Upload Section */}
@@ -194,20 +148,15 @@ function App() {
 
         {/* Analysis Progress */}
         {isAnalyzing && (
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-            <div className="flex items-center mb-6">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3"></div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-800">
-                  Analyzing Resume...
-                </h2>
-                {/* <p className="text-sm text-gray-600">
-                  Processing phases sequentially - 1 API call per phase
-                </p> */}
-              </div>
+          <div className="bg-white rounded-lg shadow p-6 mb-8">
+            <div className="flex items-center mb-4">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3" />
+              <h2 className="text-xl font-semibold text-gray-800">
+                Analyzing Resume...
+              </h2>
             </div>
 
-            {/* Progress Overview */}
+            {/* progress bar */}
             <div className="mb-4">
               <div className="flex justify-between text-sm text-gray-600 mb-2">
                 <span>Overall Progress</span>
@@ -217,7 +166,7 @@ function App() {
                       (p) => p.status === "completed" || p.status === "error"
                     ).length
                   }{" "}
-                  / {PHASE_NAMES.length} completed
+                  / {ALL_STEPS.length} completed
                 </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
@@ -228,43 +177,22 @@ function App() {
                       (Object.values(analysisProgress).filter(
                         (p) => p.status === "completed" || p.status === "error"
                       ).length /
-                        PHASE_NAMES.length) *
+                        ALL_STEPS.length) *
                       100
                     }%`,
                   }}
-                ></div>
+                />
               </div>
             </div>
 
-            {/* API Call Counter */}
-            {/* <div className="mb-4 bg-blue-50 p-3 rounded-lg">
-              <p className="text-sm text-blue-700 font-medium">
-                📊 API Calls:{" "}
-                {
-                  Object.values(analysisProgress).filter(
-                    (p) =>
-                      p.status === "started" ||
-                      p.status === "completed" ||
-                      p.status === "error"
-                  ).length
-                }{" "}
-                / {PHASE_NAMES.length}
-              </p>
-              <p className="text-xs text-blue-600 mt-1">
-                ✅ Each phase is called exactly once with no retries
-              </p>
-            </div> */}
-
-            {/* Individual Phase Progress */}
-            <div className="space-y-3">
-              {PHASE_NAMES.map((phaseName, index) => (
+            {/* per-step spinners */}
+            <div className="space-y-2">
+              {ALL_STEPS.map((step) => (
                 <LoadingSpinner
-                  key={phaseName}
-                  phaseName={phaseName}
-                  status={analysisProgress[phaseName]?.status || "pending"}
-                  error={analysisProgress[phaseName]?.error}
-                  currentPhase={index + 1}
-                  totalPhases={PHASE_NAMES.length}
+                  key={step}
+                  phaseName={step}
+                  status={analysisProgress[step]?.status || "pending"}
+                  error={analysisProgress[step]?.error}
                 />
               ))}
             </div>
@@ -274,44 +202,54 @@ function App() {
         {/* Analysis Results */}
         {analysisComplete && (
           <div className="space-y-6">
-            {/* Success Header */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <div className="flex items-center space-x-3">
-                <CheckCircle className="h-8 w-8 text-green-500" />
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-800">
-                    Analysis Complete
-                  </h2>
-                  <p className="text-gray-600">Resume: {uploadedFile?.name}</p>
-                  {/* <p className="text-green-600 text-sm mt-1">
-                    ✅ Total API calls made: {PHASE_NAMES.length} (1 per phase)
-                  </p> */}
-                  {Object.keys(analysisErrors).length > 0 && (
-                    <p className="text-yellow-600 text-sm mt-1">
-                      ⚠️ Some phases had errors - check individual phase results
-                    </p>
-                  )}
-                </div>
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center">
+                <CheckCircle className="text-green-500 h-8 w-8 mr-3" />
+                <h2 className="text-2xl font-bold text-gray-800">
+                  Analysis Complete
+                </h2>
               </div>
+              <p className="text-gray-600 mt-2">File: {uploadedFile.name}</p>
+              {Object.keys(analysisErrors).length > 0 && (
+                <p className="text-yellow-600 mt-2">
+                  ⚠️ Some steps had errors—check individual results
+                </p>
+              )}
             </div>
 
-            {/* Phase Cards with Export */}
+            {/* Phase Cards - Only show phase data, not experience data */}
             <PhaseCards
-              extractedData={extractedData}
+              extractedData={phaseOnlyData}
               searchTerm={searchTerm}
               onSearchChange={setSearchTerm}
               selectedPhase={selectedPhase}
               onPhaseSelect={setSelectedPhase}
               analysisProgress={analysisProgress}
-              uploadedFileName={uploadedFile?.name}
+              uploadedFileName={uploadedFile.name}
             />
 
-            {/* Phase Details */}
             <PhaseDetails
-              extractedData={extractedData}
+              extractedData={phaseOnlyData}
               selectedPhase={selectedPhase}
               onTagSelect={setSelectedTag}
               searchTerm={searchTerm}
+            />
+
+            {/* Experience Sections - Only show these dedicated sections */}
+            <ExperienceSection
+              title="Business Process Experience"
+              data={extractedData.business_process_experience?.["SAP TM"]}
+              onDetail={setSelectedTag}
+            />
+            <ExperienceSection
+              title="WRICEF Development Experience"
+              data={extractedData.wricef_development_experience?.["SAP TM"]}
+              onDetail={setSelectedTag}
+            />
+            <ExperienceSection
+              title="Integration Experience"
+              data={extractedData.integration_experience}
+              onDetail={setSelectedTag}
             />
           </div>
         )}

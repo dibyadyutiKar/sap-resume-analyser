@@ -1,10 +1,18 @@
+// export const PHASE_APIS = {
+//   "Pre-Implementation/Discovery": "http://3.26.210.235:8000/parsePdfPreImpl",
+//   "Build/Configuration": "http://3.26.210.235:8000/parsePdfBuild",
+//   Design: "http://3.26.210.235:8000/parsePdfDesign",
+//   Testing: "http://3.26.210.235:8000/parsePdfTesting",
+//   Deployment: "http://3.26.210.235:8000/parsePdfDeploymentGoLive",
+//   "Post-Implementation": "http://3.26.210.235:8000/parsePdfPostImplementation",
+// };
 export const PHASE_APIS = {
-  "Pre-Implementation/Discovery": "http://3.26.210.235:8000/parsePdfPreImpl",
-  "Build/Configuration": "http://3.26.210.235:8000/parsePdfBuild",
-  Design: "http://3.26.210.235:8000/parsePdfDesign",
-  Testing: "http://3.26.210.235:8000/parsePdfTesting",
-  Deployment: "http://3.26.210.235:8000/parsePdfDeploymentGoLive",
-  "Post-Implementation": "http://3.26.210.235:8000/parsePdfPostImplementation",
+  "Pre-Implementation/Discovery": "http://127.0.0.1:8000/parsePdfPreImpl",
+  "Build/Configuration": "http://127.0.0.1:8000/parsePdfBuild",
+  Design: "http://127.0.0.1:8000/parsePdfDesign",
+  Testing: "http://127.0.0.1:8000/parsePdfTesting",
+  Deployment: "http://127.0.0.1:8000/parsePdfDeploymentGoLive",
+  "Post-Implementation": "http://127.0.0.1:8000/parsePdfPostImplementation",
 };
 
 // Mapping for API response keys to our internal phase names
@@ -22,6 +30,14 @@ export const API_RESPONSE_KEYS = {
 };
 
 export const PHASE_NAMES = Object.keys(PHASE_APIS);
+
+// new experience endpoints
+export const EXPERIENCE_APIS = {
+  business_process_experience: "http://127.0.0.1:8000/TM/parsePdfBusinessTM",
+  wricef_development_experience: "http://127.0.0.1:8000/TM/parsePdfWRICEFTM",
+  integration_experience: "http://127.0.0.1:8000/parsePdfIntegration",
+};
+export const EXPERIENCE_NAMES = Object.keys(EXPERIENCE_APIS);
 
 // Expected categories for each phase (for validation and UI hints)
 export const PHASE_CATEGORIES = {
